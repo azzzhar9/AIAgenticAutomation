@@ -1,0 +1,215 @@
+{
+  "name": "TriageAI — Support Ticket Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket-submitted",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Ticket Submitted",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "triageai-ticket"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract ticket data from the webhook payload\nconst ticket = $input.first().json.body?.ticket || $input.first().json.ticket || $input.first().json;\n\nconst id = ticket.id || 'UNKNOWN';\nconst name = ticket.name || 'Customer';\nconst email = ticket.email || '';\nconst issue = ticket.issue || '';\nconst category = ticket.result?.category || 'General Query';\nconst priority = ticket.result?.priority || 'Medium';\nconst team = ticket.result?.team || 'General Support';\nconst draft = ticket.result?.draft_response || '';\nconst confidence = ticket.result?.confidence || 0;\nconst timestamp = ticket.timestamp || new Date().toISOString();\n\n// Determine urgency flag\nconst isUrgent = priority === 'High';\n\n// Build notification payload\nreturn [{\n  json: {\n    id,\n    name,\n    email,\n    issue,\n    category,\n    priority,\n    team,\n    draft,\n    confidence,\n    timestamp,\n    isUrgent,\n    subject: `[${priority} Priority] New ${category} ticket — ${id}`,\n    notificationBody: `NEW SUPPORT TICKET\\n${'='.repeat(50)}\\n\\nTicket ID : ${id}\\nPriority  : ${priority}${isUrgent ? ' 🚨' : ''}\\nCategory  : ${category}\\nTeam      : ${team}\\nConfidence: ${confidence}%\\n\\nCustomer  : ${name}\\nEmail     : ${email}\\n\\nISSUE\\n-----\\n${issue}\\n\\nDRAFT RESPONSE\\n--------------\\n${draft}\\n\\nTimestamp : ${timestamp}\\n${'='.repeat(50)}`\n  }\n}];"
+      },
+      "id": "process-ticket",
+      "name": "Process Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.team }}",
+                    "rightValue": "Billing Team",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Billing Team"
+            },
+            {
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.team }}",
+                    "rightValue": "Engineering Team",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Engineering Team"
+            },
+            {
+              "conditions": {
+                "options": { "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.team }}",
+                    "rightValue": "Product Team",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Product Team"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "route-by-team",
+      "name": "Route by Team",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`\\n📧 [BILLING TEAM] ${d.subject}`);\nconsole.log(d.notificationBody);\nreturn [{ json: { ...d, routed: true, notifiedTeam: 'Billing Team', routedAt: new Date().toISOString() } }];"
+      },
+      "id": "notify-billing",
+      "name": "Notify Billing Team",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`\\n🔧 [ENGINEERING TEAM] ${d.subject}`);\nconsole.log(d.notificationBody);\nreturn [{ json: { ...d, routed: true, notifiedTeam: 'Engineering Team', routedAt: new Date().toISOString() } }];"
+      },
+      "id": "notify-engineering",
+      "name": "Notify Engineering Team",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`\\n💡 [PRODUCT TEAM] ${d.subject}`);\nconsole.log(d.notificationBody);\nreturn [{ json: { ...d, routed: true, notifiedTeam: 'Product Team', routedAt: new Date().toISOString() } }];"
+      },
+      "id": "notify-product",
+      "name": "Notify Product Team",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconsole.log(`\\n📬 [GENERAL SUPPORT] ${d.subject}`);\nconsole.log(d.notificationBody);\nreturn [{ json: { ...d, routed: true, notifiedTeam: 'General Support', routedAt: new Date().toISOString() } }];"
+      },
+      "id": "notify-general",
+      "name": "Notify General Support",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 660]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, ticketId: $json.id, routed: true, team: $json.notifiedTeam, routedAt: $json.routedAt }) }}"
+      },
+      "id": "respond-billing",
+      "name": "Respond Billing",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, ticketId: $json.id, routed: true, team: $json.notifiedTeam, routedAt: $json.routedAt }) }}"
+      },
+      "id": "respond-engineering",
+      "name": "Respond Engineering",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, ticketId: $json.id, routed: true, team: $json.notifiedTeam, routedAt: $json.routedAt }) }}"
+      },
+      "id": "respond-product",
+      "name": "Respond Product",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 480]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, ticketId: $json.id, routed: true, team: $json.notifiedTeam, routedAt: $json.routedAt }) }}"
+      },
+      "id": "respond-general",
+      "name": "Respond General",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 660]
+    }
+  ],
+  "connections": {
+    "Ticket Submitted": {
+      "main": [
+        [{ "node": "Process Ticket", "type": "main", "index": 0 }]
+      ]
+    },
+    "Process Ticket": {
+      "main": [
+        [{ "node": "Route by Team", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by Team": {
+      "main": [
+        [{ "node": "Notify Billing Team", "type": "main", "index": 0 }],
+        [{ "node": "Notify Engineering Team", "type": "main", "index": 0 }],
+        [{ "node": "Notify Product Team", "type": "main", "index": 0 }],
+        [{ "node": "Notify General Support", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notify Billing Team": {
+      "main": [[{ "node": "Respond Billing", "type": "main", "index": 0 }]]
+    },
+    "Notify Engineering Team": {
+      "main": [[{ "node": "Respond Engineering", "type": "main", "index": 0 }]]
+    },
+    "Notify Product Team": {
+      "main": [[{ "node": "Respond Product", "type": "main", "index": 0 }]]
+    },
+    "Notify General Support": {
+      "main": [[{ "node": "Respond General", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "triageai-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "triageai-local"
+  },
+  "id": "triageai-workflow",
+  "tags": [{ "name": "TriageAI" }]
+}
