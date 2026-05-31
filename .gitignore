@@ -35,6 +35,9 @@ n8n-demo.log
 n8n-demo/
 *.webm
 *.png
+cf.log
+tunnel.log
+cloudflared.exe
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -45,3 +48,5 @@ n8n-demo/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.vercel
