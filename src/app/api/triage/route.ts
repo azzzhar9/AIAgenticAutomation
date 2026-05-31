@@ -4,8 +4,10 @@ import { triageWithClaude } from '@/lib/claude';
 import { addTicket, generateId, Ticket } from '@/lib/store';
 import { isAirtableConfigured, saveTicketToAirtable } from '@/lib/airtable-client';
 
-const N8N_WEBHOOK_URL =
-  process.env.N8N_WEBHOOK_URL || 'http://localhost:5678/webhook/ticket-submitted';
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || 'http://localhost:5678/webhook/ticket-submitted';
+if (!process.env.N8N_WEBHOOK_URL) {
+  console.warn('[n8n] N8N_WEBHOOK_URL not set — using local fallback. Set this env var to enable production routing.');
+}
 
 async function fireN8nWebhook(ticket: Ticket): Promise<void> {
   try {
@@ -22,7 +24,7 @@ async function fireN8nWebhook(ticket: Ticket): Promise<void> {
     if (!res.ok) {
       console.warn(`[n8n] Webhook responded with ${res.status}`);
     } else {
-      console.log(`[n8n] Ticket ${ticket.id} routed to ${ticket.result.team}`);
+      console.log(`[n8n] ✓ Ticket ${ticket.id} routed to ${ticket.result.team} via n8n`);
     }
   } catch (err) {
     console.warn('[n8n] Webhook unreachable — skipping automation:', (err as Error).message);
