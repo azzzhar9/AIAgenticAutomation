@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getAllTickets, getStats } from '@/lib/store';
+import { getAllTickets, getStats, computeStats } from '@/lib/store';
+import { isAirtableConfigured, getAllTicketsFromAirtable } from '@/lib/airtable-client';
 
 export async function GET() {
-  const tickets = getAllTickets();
-  const stats = getStats();
-  return NextResponse.json({ tickets, stats });
+  if (isAirtableConfigured()) {
+    try {
+      const tickets = await getAllTicketsFromAirtable();
+      const stats = computeStats(tickets);
+      return NextResponse.json({ tickets, stats });
+    } catch (err) {
+      console.error('[tickets] Airtable fetch failed, falling back to in-memory:', err);
+    }
+  }
+
+  return NextResponse.json({ tickets: getAllTickets(), stats: getStats() });
 }

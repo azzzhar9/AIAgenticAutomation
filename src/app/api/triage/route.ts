@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { triageTicket } from '@/lib/triage-engine';
+import { triageWithClaude } from '@/lib/claude';
 import { addTicket, generateId, Ticket } from '@/lib/store';
+import { isAirtableConfigured, saveTicketToAirtable } from '@/lib/airtable-client';
 
 const N8N_WEBHOOK_URL =
-  process.env.N8N_WEBHOOK_URL ||
-  'http://localhost:5678/webhook/ticket-submitted';
+  process.env.N8N_WEBHOOK_URL || 'http://localhost:5678/webhook/ticket-submitted';
 
 async function fireN8nWebhook(ticket: Ticket): Promise<void> {
   try {
@@ -20,7 +21,6 @@ async function fireN8nWebhook(ticket: Ticket): Promise<void> {
       console.log(`[n8n] Ticket ${ticket.id} routed to ${ticket.result.team}`);
     }
   } catch (err) {
-    // n8n not running — skip silently so the app still works
     console.warn('[n8n] Webhook unreachable — skipping automation:', (err as Error).message);
   }
 }
@@ -71,7 +71,18 @@ export async function POST(req: NextRequest) {
   const safeEmail = email.trim().slice(0, 254);
   const safeIssue = issue.trim().slice(0, 2000);
 
-  const result = triageTicket(safeName, safeIssue);
+  // Triage: Claude API first, keyword engine as fallback
+  let result;
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      result = await triageWithClaude(safeName, safeIssue);
+    } catch (err) {
+      console.error('[triage] Claude API failed, falling back to keyword engine:', err);
+      result = triageTicket(safeName, safeIssue);
+    }
+  } else {
+    result = triageTicket(safeName, safeIssue);
+  }
 
   const ticket: Ticket = {
     id: generateId(),
@@ -83,7 +94,17 @@ export async function POST(req: NextRequest) {
     status: 'open',
   };
 
-  addTicket(ticket);
+  // Storage: Airtable if configured, in-memory fallback
+  if (isAirtableConfigured()) {
+    try {
+      await saveTicketToAirtable(ticket);
+    } catch (err) {
+      console.error('[triage] Airtable save failed, falling back to in-memory:', err);
+      addTicket(ticket);
+    }
+  } else {
+    addTicket(ticket);
+  }
 
   // Fire-and-forget: trigger n8n workflow for routing & notifications
   fireN8nWebhook(ticket);
