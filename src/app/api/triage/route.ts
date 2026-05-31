@@ -11,9 +11,13 @@ async function fireN8nWebhook(ticket: Ticket): Promise<void> {
   try {
     const res = await fetch(N8N_WEBHOOK_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'bypass-tunnel-reminder': 'true',   // required for localtunnel public URLs
+        'User-Agent': 'TriageAI-Webhook/1.0',
+      },
       body: JSON.stringify({ ticket }),
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
       console.warn(`[n8n] Webhook responded with ${res.status}`);
